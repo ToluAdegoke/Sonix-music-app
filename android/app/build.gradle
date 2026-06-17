@@ -1,0 +1,63 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+import java.util.Properties
+
+// Line 7 & 9 Fix: Use a more direct path resolution
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { stream ->
+        localProperties.load(stream)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
+def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
+android {
+    namespace "com.sonix.app"
+    compileSdkVersion 36
+    ndkVersion flutter.ndkVersion
+
+    compileOptions {
+        // Updated to Java 17 for better compatibility with modern Tooling
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        applicationId "com.sonix.app"
+        minSdkVersion flutter.minSdkVersion // Explicitly setting this if flutter.minSdkVersion fails
+        targetSdkVersion 36
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+    }
+
+    buildTypes {
+        release {
+            // NOTE: Ensure you create a real release keystore before publishing!
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    // Standard implementation can go here if needed
+}
