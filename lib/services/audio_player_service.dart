@@ -8,14 +8,12 @@ import '../models/track.dart';
 import 'youtube_service.dart';
 import 'music_service.dart';
 
-/// Connection state enum for UI (renamed to avoid Flutter conflict)
 enum ProxyConnectionState {
   searching,
   connected,
   disconnected,
 }
 
-/// Singleton wrapper around just_audio for queue + playback control.
 class AudioPlayerService {
   AudioPlayerService._internal() {
     _init();
@@ -26,22 +24,17 @@ class AudioPlayerService {
   final AudioPlayer _player = AudioPlayer();
   final YoutubeService _youtube = YoutubeService.instance;
 
-  // YOUR TAILSCALE IP - replace if it changes
+  // Static fallback IP for remote connection
   static const String TAILSCALE_SERVER_IP = '100.107.148.88';
 
-  // Dynamic proxy URL - updated automatically
   String _proxyBaseUrl = "";
-
-  // Discovery state tracking
   bool _isDiscovering = false;
   String? _cachedIP;
   Timer? _periodicRediscovery;
 
-  // Discovery status stream for UI feedback
   final _discoveryStatusController = StreamController<String>.broadcast();
   Stream<String> get discoveryStatusStream => _discoveryStatusController.stream;
 
-  // Connection state
   final _connectionStateController = StreamController<ProxyConnectionState>.broadcast();
   Stream<ProxyConnectionState> get connectionStateStream => _connectionStateController.stream;
 
@@ -49,7 +42,6 @@ class AudioPlayerService {
   int _currentIndex = 0;
   bool _loadingYoutube = false;
 
-  // Public Getters for Provider
   bool get isPlaying => _player.playing;
   List<Track> get queue => List.unmodifiable(_queue);
   bool get isLoadingYoutube => _loadingYoutube;
@@ -59,7 +51,6 @@ class AudioPlayerService {
           ? _queue[_currentIndex]
           : null;
 
-  // Streams for UI
   Stream<Duration> get positionStream => _player.positionStream;
   Stream<Duration?> get durationStream => _player.durationStream;
   Stream<PlayerState> get playerStateStream => _player.playerStateStream;
@@ -77,52 +68,47 @@ class AudioPlayerService {
         next();
       }
     });
-
-    // Load cached IP on startup
     _loadCachedIP();
   }
 
-  /// Load previously successful IP from cache
   Future<void> _loadCachedIP() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _cachedIP = prefs.getString('proxy_ip');
       if (_cachedIP != null) {
-        _updateStatus('📋 Loaded cached IP: $_cachedIP');
+        _updateStatus('Loaded cached IP from storage: $_cachedIP');
       }
     } catch (e) {
-      print('[Sonix] ⚠️ Could not load cached IP: $e');
+      print('[Sonix] Error loading cached IP: $e');
     }
   }
 
-  /// Cache successful IP for faster reconnection
   Future<void> _cacheIP(String ip) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('proxy_ip', ip);
       _cachedIP = ip;
-      print('[Sonix] 💾 Cached proxy IP: $ip');
+      print('[Sonix] Saved active proxy IP: $ip');
     } catch (e) {
-      print('[Sonix] ⚠️ Could not cache IP: $e');
+      print('[Sonix] Cache write failed: $e');
     }
   }
 
-  /// Update discovery status for UI
   void _updateStatus(String status) {
     print('[Sonix] $status');
     _discoveryStatusController.add(status);
   }
 
-  /// Main discovery orchestrator - tries multiple strategies
+  // Sequentially run network discovery methods
   Future<void> _startMultiStrategyDiscovery() async {
     if (_isDiscovering) return;
     _isDiscovering = true;
     _connectionStateController.add(ProxyConnectionState.searching);
 
-    _updateStatus('🔍 Starting multi-strategy discovery...');
+    _updateStatus('Initializing connection sequence...');
 
-    // Strategy 0: Try Tailscale IP (works anywhere!)
-    _updateStatus('🌐 Trying Tailscale IP: $TAILSCALE_SERVER_IP');
+    // 1. Try hardcoded Tailscale address
+    _updateStatus('Testing Tailscale entry: $TAILSCALE_SERVER_IP');
     if (await _testProxyConnection(TAILSCALE_SERVER_IP)) {
       _setProxyUrl(TAILSCALE_SERVER_IP);
       _isDiscovering = false;
@@ -130,9 +116,9 @@ class AudioPlayerService {
       return;
     }
 
-    // Strategy 1: Try cached IP first (fastest)
+    // 2. Fall back to last known active IP
     if (_cachedIP != null) {
-      _updateStatus('⚡ Trying cached IP: $_cachedIP');
+      _updateStatus('Testing last known local target: $_cachedIP');
       if (await _testProxyConnection(_cachedIP!)) {
         _setProxyUrl(_cachedIP!);
         _isDiscovering = false;
@@ -141,8 +127,8 @@ class AudioPlayerService {
       }
     }
 
-    // Strategy 2: NSD/mDNS discovery (best for WiFi networks)
-    _updateStatus('📡 Strategy 2/4: NSD Discovery');
+    // 3. Look for service broadcast on the network
+    _updateStatus('Scanning via mDNS/NSD...');
     final nsdFound = await _tryNSDDiscovery();
     if (nsdFound) {
       _isDiscovering = false;
@@ -150,8 +136,8 @@ class AudioPlayerService {
       return;
     }
 
-    // Strategy 3: Smart IP scanning (works on hotspots)
-    _updateStatus('🔎 Strategy 3/4: Smart IP Scanning');
+    // 4. Fall back to local network sweep
+    _updateStatus('Scanning local subnet ranges...');
     final scanFound = await _trySmartIPScanning();
     if (scanFound) {
       _isDiscovering = false;
@@ -159,8 +145,8 @@ class AudioPlayerService {
       return;
     }
 
-    // Strategy 4: Common hotspot IPs (last resort)
-    _updateStatus('🎯 Strategy 4/4: Common Hotspot IPs');
+    // 5. Check typical gateway setups
+    _updateStatus('Checking default access points...');
     final commonFound = await _tryCommonHotspotIPs();
     if (commonFound) {
       _isDiscovering = false;
@@ -168,16 +154,13 @@ class AudioPlayerService {
       return;
     }
 
-    // All strategies failed
-    _updateStatus('❌ No proxy found. Will retry automatically.');
+    _updateStatus('No response from local backend. Retries scheduled.');
     _connectionStateController.add(ProxyConnectionState.disconnected);
     _isDiscovering = false;
 
-    // Schedule periodic rediscovery
     _scheduleRediscovery();
   }
 
-  /// Strategy 1: NSD Discovery (15 second timeout)
   Future<bool> _tryNSDDiscovery() async {
     try {
       final discovery = await startDiscovery('_http._tcp.local.');
@@ -189,11 +172,9 @@ class AudioPlayerService {
             found = true;
             final host = service.addresses!.first.address;
             final port = service.port ?? 5000;
-            final ip = host;
 
-            _setProxyUrl(ip, port: port);
-            _updateStatus('✅ NSD found SonixProxy at $ip:$port');
-
+            _setProxyUrl(host, port: port);
+            _updateStatus('Found proxy target via NSD at $host:$port');
             stopDiscovery(discovery);
           }
         }
@@ -203,22 +184,21 @@ class AudioPlayerService {
 
       if (!found) {
         stopDiscovery(discovery);
-        _updateStatus('⏱️ NSD timed out (15s)');
+        _updateStatus('NSD scan window closed without response.');
       }
 
       return found;
     } catch (e) {
-      _updateStatus('⚠️ NSD error: $e');
+      _updateStatus('NSD driver exception: $e');
       return false;
     }
   }
 
-  /// Strategy 2: Smart IP Scanning based on device's own IP
   Future<bool> _trySmartIPScanning() async {
     try {
       final ownIP = await _getDeviceIP();
       if (ownIP == null) {
-        _updateStatus('⚠️ Could not determine device IP');
+        _updateStatus('Interface lookup failed; skipping subnet sweep.');
         return false;
       }
 
@@ -226,9 +206,9 @@ class AudioPlayerService {
       if (parts.length != 4) return false;
 
       final networkPrefix = '${parts[0]}.${parts[1]}.${parts[2]}';
-
       final ipsToTest = <String>{};
 
+      // Map likely server hosts on the local network block
       ipsToTest.addAll([
         '$networkPrefix.1',
         '$networkPrefix.2',
@@ -255,12 +235,11 @@ class AudioPlayerService {
         }
       }
 
-      _updateStatus('🔍 Testing ${ipsToTest.length} IPs...');
+      _updateStatus('Probing ${ipsToTest.length} potential local endpoints...');
 
       final ipList = ipsToTest.toList();
       for (int i = 0; i < ipList.length; i += 10) {
         final batch = ipList.skip(i).take(10);
-
         final results = await Future.wait(
           batch.map((ip) => _testProxyConnection(ip)),
         );
@@ -269,7 +248,7 @@ class AudioPlayerService {
           if (results[j]) {
             final foundIP = batch.elementAt(j);
             _setProxyUrl(foundIP);
-            _updateStatus('✅ Found proxy at $foundIP');
+            _updateStatus('Endpoint match found: $foundIP');
             return true;
           }
         }
@@ -277,12 +256,11 @@ class AudioPlayerService {
 
       return false;
     } catch (e) {
-      _updateStatus('⚠️ IP scanning error: $e');
+      _updateStatus('Subnet probe threw exception: $e');
       return false;
     }
   }
 
-  /// Strategy 3: Common Hotspot IPs (fallback)
   Future<bool> _tryCommonHotspotIPs() async {
     final commonIPs = <String>{};
 
@@ -309,33 +287,28 @@ class AudioPlayerService {
       '192.168.43.10',
     ]);
 
-    _updateStatus('🔍 Testing ${commonIPs.length} common hotspot IPs...');
+    _updateStatus('Pinging common tethering interfaces...');
 
     for (final ip in commonIPs) {
       if (await _testProxyConnection(ip)) {
         _setProxyUrl(ip);
-        _updateStatus('✅ Found proxy at $ip (common IP)');
+        _updateStatus('Connected via interface: $ip');
         return true;
       }
     }
 
-    _updateStatus('❌ No common hotspot IPs worked');
+    _updateStatus('Default interface check completed without links.');
     return false;
   }
 
-  /// Test if a specific IP:port combination has our proxy server
   Future<bool> _testProxyConnection(String ip, {int port = 5000}) async {
     try {
       final client = http.Client();
       try {
         final testUrl = 'http://$ip:$port/';
-
-        final response = await client.get(
-          Uri.parse(testUrl),
-        ).timeout(
-          const Duration(milliseconds: 3000), // Changed from 800 to 3000
+        await client.get(Uri.parse(testUrl)).timeout(
+          const Duration(milliseconds: 3000), // Increased to stabilize mobile handshakes
         );
-
         return true;
       } finally {
         client.close();
@@ -345,15 +318,13 @@ class AudioPlayerService {
     }
   }
 
-  /// Set the proxy URL and cache it
   void _setProxyUrl(String ip, {int port = 5000}) {
     _proxyBaseUrl = "http://$ip:$port/play?id=";
     MusicService.instance.updateBaseUrl("http://$ip:$port");
     _cacheIP(ip);
-    _updateStatus('🔗 Proxy URL set: $_proxyBaseUrl');
+    _updateStatus('Active API target configuration updated.');
   }
 
-  /// Get device's current IP address
   Future<String?> _getDeviceIP() async {
     try {
       final interfaces = await NetworkInterface.list(
@@ -370,19 +341,18 @@ class AudioPlayerService {
         }
       }
     } catch (e) {
-      _updateStatus('⚠️ Error getting device IP: $e');
+      _updateStatus('Failed to capture active hardware address: $e');
     }
     return null;
   }
 
-  /// Schedule periodic rediscovery if not connected
   void _scheduleRediscovery() {
     _periodicRediscovery?.cancel();
     _periodicRediscovery = Timer.periodic(
       const Duration(seconds: 30),
           (_) {
         if (!isProxyConnected) {
-          _updateStatus('🔄 Auto-retrying discovery...');
+          _updateStatus('Retrying connection routine...');
           _startMultiStrategyDiscovery();
         } else {
           _periodicRediscovery?.cancel();
@@ -391,9 +361,8 @@ class AudioPlayerService {
     );
   }
 
-  /// Manual retry - can be called from UI
   Future<void> retryDiscovery() async {
-    _updateStatus('🔄 Manual rediscovery triggered...');
+    _updateStatus('Manual connection sweep called.');
     await _startMultiStrategyDiscovery();
   }
 
@@ -408,30 +377,24 @@ class AudioPlayerService {
     final t = currentTrack;
     if (t == null) return;
 
-    // If not connected, try Tailscale first, then local network
     if (!isProxyConnected) {
-      _updateStatus('⏳ Looking for server...');
+      _updateStatus('No active server endpoint. Dropping to fallback lookups...');
 
-      // Try Tailscale first (works anywhere with internet)
       if (await _testProxyConnection(TAILSCALE_SERVER_IP)) {
         _setProxyUrl(TAILSCALE_SERVER_IP);
-        _updateStatus('✅ Connected via Tailscale');
-      }
-      // Try local network
-      else if (!isProxyConnected) {
-        if (await _quickNetworkScan()) {
-          // _setProxyUrl was called inside _quickNetworkScan
-        }
+        _updateStatus('Established link over remote overlay network.');
+      } else if (!isProxyConnected) {
+        await _quickNetworkScan();
       }
 
       if (!isProxyConnected) {
-        _updateStatus('🎵 No server found, using preview');
+        _updateStatus('Proxy unavailable; attempting 30s audio sample preview...');
         if (t.previewUrl.isNotEmpty) {
           try {
             await _player.setUrl(t.previewUrl);
             if (autoPlay) _player.play();
           } catch (e) {
-            print('[Sonix] ❌ Preview playback failed: $e');
+            print('[Sonix] Fallback track stream failed: $e');
           }
         }
         return;
@@ -443,25 +406,23 @@ class AudioPlayerService {
       _loadingController.add(true);
       _trackChangedController.add(t);
 
-      _updateStatus('🔎 Searching YouTube for: ${t.title}');
+      _updateStatus('Resolving streaming resource for: ${t.title}');
 
       final videoId = await _youtube.getVideoId(t.title, t.artistName).timeout(
         const Duration(seconds: 15),
         onTimeout: () {
-          _updateStatus('⏱️ YouTube search timed out');
+          _updateStatus('Resource engine lookup timed out.');
           return null;
         },
       );
 
       if (videoId != null && videoId.isNotEmpty) {
         final fullUrl = "$_proxyBaseUrl${videoId.trim()}";
-        _updateStatus('🎵 Loading full track...');
+        _updateStatus('Buffering full-length stream...');
 
-        // Try playback with retries
         bool played = false;
         for (int attempt = 0; attempt < 3; attempt++) {
           try {
-            // Use ConcatenatingAudioSource for better timeout handling
             await _player.setAudioSource(
               AudioSource.uri(
                 Uri.parse(fullUrl),
@@ -473,31 +434,31 @@ class AudioPlayerService {
               await _player.play();
             }
 
-            _updateStatus('✅ Playing full track');
+            _updateStatus('Full track streaming initialized.');
             played = true;
             break;
           } catch (e) {
-            _updateStatus('⚠️ Playback attempt ${attempt + 1} failed: $e');
+            _updateStatus('Stream pipeline write failed (attempt ${attempt + 1}): $e');
             if (attempt < 2) {
-              _updateStatus('🔄 Retrying...');
+              _updateStatus('Re-initializing pipeline...');
               await Future.delayed(const Duration(seconds: 2));
             }
           }
         }
 
         if (!played) {
-          throw Exception('All playback attempts failed');
+          throw Exception('Pipeline failure across all retry handles.');
         }
       } else {
-        _updateStatus('⚠️ YouTube search failed, using preview');
+        _updateStatus('Resource engine missing index; falling back to sample preview.');
         if (t.previewUrl.isNotEmpty) {
           await _player.setUrl(t.previewUrl);
           if (autoPlay) _player.play();
         }
       }
     } catch (e) {
-      _updateStatus('⚠️ Full track failed, using preview');
-      print('[Sonix] ❌ Playback error: $e');
+      _updateStatus('Stream failed; dropping back to short sample.');
+      print('[Sonix] Pipeline error context: $e');
       _cachedIP = null;
       _proxyBaseUrl = "";
 
@@ -506,7 +467,7 @@ class AudioPlayerService {
           await _player.setUrl(t.previewUrl);
           if (autoPlay) _player.play();
         } catch (previewError) {
-          print('[Sonix] ❌ Preview also failed: $previewError');
+          print('[Sonix] Secondary pipeline failure: $previewError');
         }
       }
     } finally {
@@ -518,12 +479,12 @@ class AudioPlayerService {
   Future<void> _performFullTrackSearch(Track t, bool autoPlay) async {
     try {
       await Future.delayed(const Duration(seconds: 2));
-      _updateStatus('🔎 background search starting for: ${t.title}');
+      _updateStatus('Background processing query for: ${t.title}');
 
       final videoId = await _youtube.getVideoId(t.title, t.artistName).timeout(
         const Duration(seconds: 15),
         onTimeout: () {
-          _updateStatus('⏱️ YouTube search timed out.');
+          _updateStatus('Background resolver query timed out.');
           return null;
         },
       );
@@ -540,14 +501,13 @@ class AudioPlayerService {
         if (autoPlay) _player.play();
       }
     } catch (e) {
-      _updateStatus('⚠️ Swap background error: $e');
+      _updateStatus('Background player hot-swap exception: $e');
     } finally {
       _loadingYoutube = false;
       _loadingController.add(false);
     }
   }
 
-  // Quick network scan that updates the proxy URL directly
   Future<bool> _quickNetworkScan() async {
     final ownIP = await _getDeviceIP();
     if (ownIP == null) return false;
@@ -557,13 +517,11 @@ class AudioPlayerService {
 
     final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
 
-    // Test gateway first (most common)
     if (await _testProxyConnection('$prefix.1')) {
       _setProxyUrl('$prefix.1');
       return true;
     }
 
-    // Test a few common alternatives
     for (final testIP in ['$prefix.2', '$prefix.100', '$prefix.101']) {
       if (await _testProxyConnection(testIP)) {
         _setProxyUrl(testIP);
@@ -573,8 +531,6 @@ class AudioPlayerService {
 
     return false;
   }
-
-  // --- CONTROLS ---
 
   Future<void> play() => _player.play();
   Future<void> pause() => _player.pause();

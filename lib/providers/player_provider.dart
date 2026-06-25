@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 
-/// Exposes AudioPlayerService as a ChangeNotifier for easy UI rebinding.
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayerService _svc = AudioPlayerService.instance;
 
@@ -12,23 +11,14 @@ class PlayerProvider extends ChangeNotifier {
   StreamSubscription? _loadingSub;
 
   PlayerProvider() {
-    // Listen for track changes (e.g., when the queue moves forward)
     _trackSub = _svc.currentTrackStream.listen((_) => notifyListeners());
-
-    // Listen for play/pause state changes
     _playingSub = _svc.playingStream.listen((_) => notifyListeners());
-
-    // NEW: Listen for YouTube loading/searching states
     _loadingSub = _svc.loadingStream.listen((_) => notifyListeners());
   }
 
   Track? get currentTrack => _svc.currentTrack;
   bool get isPlaying => _svc.isPlaying;
-
-  /// Returns true if the service is currently hunting for the full YouTube version.
-  /// Use this in your UI to show a loading spinner over the play button or track title.
   bool get isLoadingYoutube => _svc.isLoadingYoutube;
-
   List<Track> get queue => _svc.queue;
   AudioPlayerService get service => _svc;
 

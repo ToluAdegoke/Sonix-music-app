@@ -6,11 +6,6 @@ import '../models/artist.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 
-/// Client for the free, public Deezer API.
-///
-/// NOTE: Deezer CORS policy blocks browser calls, but on native Android
-/// (which is the target here) all endpoints work fine without auth.
-/// Base: https://api.deezer.com
 class DeezerApi {
   static const String _base = 'https://api.deezer.com';
 
@@ -23,11 +18,10 @@ class DeezerApi {
     return json.decode(res.body) as Map<String, dynamic>;
   }
 
-  /// Search all (tracks, albums, artists).
   Future<List<Track>> searchTracks(String query, {int limit = 25}) async {
     if (query.trim().isEmpty) return [];
     final data =
-        await _get('/search?q=${Uri.encodeQueryComponent(query)}&limit=$limit');
+    await _get('/search?q=${Uri.encodeQueryComponent(query)}&limit=$limit');
     final list = (data['data'] as List?) ?? [];
     return list
         .cast<Map<String, dynamic>>()
@@ -52,7 +46,6 @@ class DeezerApi {
     return list.cast<Map<String, dynamic>>().map(Album.fromDeezer).toList();
   }
 
-  /// Top charts (Deezer's global chart playlist).
   Future<List<Track>> getTopCharts({int limit = 25}) async {
     final data = await _get('/chart/0/tracks?limit=$limit');
     final list = (data['data'] as List?) ?? [];
@@ -63,28 +56,24 @@ class DeezerApi {
         .toList();
   }
 
-  /// Featured editorial playlists for Home screen.
   Future<List<Playlist>> getEditorialPlaylists({int limit = 15}) async {
     final data = await _get('/chart/0/playlists?limit=$limit');
     final list = (data['data'] as List?) ?? [];
     return list.cast<Map<String, dynamic>>().map(Playlist.fromDeezer).toList();
   }
 
-  /// Top albums for "Popular albums" rail.
   Future<List<Album>> getTopAlbums({int limit = 15}) async {
     final data = await _get('/chart/0/albums?limit=$limit');
     final list = (data['data'] as List?) ?? [];
     return list.cast<Map<String, dynamic>>().map(Album.fromDeezer).toList();
   }
 
-  /// Top artists.
   Future<List<Artist>> getTopArtists({int limit = 15}) async {
     final data = await _get('/chart/0/artists?limit=$limit');
     final list = (data['data'] as List?) ?? [];
     return list.cast<Map<String, dynamic>>().map(Artist.fromDeezer).toList();
   }
 
-  /// Get tracks inside a playlist.
   Future<List<Track>> getPlaylistTracks(int playlistId,
       {int limit = 50}) async {
     final data = await _get('/playlist/$playlistId/tracks?limit=$limit');
@@ -96,11 +85,11 @@ class DeezerApi {
         .toList();
   }
 
-  /// Get tracks inside an album.
   Future<List<Track>> getAlbumTracks(int albumId) async {
     final data = await _get('/album/$albumId/tracks');
     final list = (data['data'] as List?) ?? [];
-    // album/tracks endpoint omits album obj — enrich.
+
+    // API response drops the main album payload here, fetching metadata to enrich tracks
     final albumInfo = await _get('/album/$albumId');
     return list
         .cast<Map<String, dynamic>>()
@@ -116,7 +105,6 @@ class DeezerApi {
     }).toList();
   }
 
-  /// Get top tracks for an artist.
   Future<List<Track>> getArtistTopTracks(int artistId, {int limit = 25}) async {
     final data = await _get('/artist/$artistId/top?limit=$limit');
     final list = (data['data'] as List?) ?? [];

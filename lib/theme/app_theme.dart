@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Sonix brand palette — Spotify-inspired dark, but with a custom
-/// vibrant purple + teal accent instead of Spotify green.
 class AppColors {
-  static const Color background = Color(0xFF0E0B1F); // deep indigo/black
-  static const Color surface = Color(0xFF171331);
-  static const Color surfaceElevated = Color(0xFF211B47);
-  static const Color primary = Color(0xFF8A5CFF); // vibrant purple
-  static const Color accent = Color(0xFF22D3EE); // teal
+  static const Color background = Color(0xFF000000); // Pure OLED Black
+  static const Color surface = Color(0xFF121212);    // Stark dark grey surface
+  static const Color surfaceElevated = Color(0xFF1C1C1E);
+  static const Color primary = Color(0xFFFFFFFF);   // Pure white for primary actions
+  static const Color accent = Color(0xFFFFFFFF);    // Consistent high-contrast white
   static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFB3B3C7);
-  static const Color divider = Color(0xFF2A2350);
+  static const Color textSecondary = Color(0xFF8E8E93); // Clean muted secondary grey
+  static const Color divider = Color(0xFF1C1C1E);
 
   static const Gradient brandGradient = LinearGradient(
-    colors: [primary, accent],
+    colors: [primary, Color(0xFF8E8E93)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -42,7 +40,7 @@ class AppTheme {
         iconTheme: IconThemeData(color: AppColors.textPrimary),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Color(0xFF120F27),
+        backgroundColor: AppColors.background,
         selectedItemColor: AppColors.textPrimary,
         unselectedItemColor: AppColors.textSecondary,
         type: BottomNavigationBarType.fixed,
@@ -59,7 +57,7 @@ class AppTheme {
           borderSide: BorderSide.none,
         ),
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }

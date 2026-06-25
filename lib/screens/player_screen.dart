@@ -37,7 +37,6 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
     _artController.forward();
 
-    // Silent connection listener - no snackbars, no status bar
     _connectionSubscription = AudioPlayerService.instance.connectionStateStream.listen((state) {
       if (mounted) {
         setState(() {
@@ -91,8 +90,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           CachedNetworkImage(
             imageUrl: track.albumCover,
             fit: BoxFit.cover,
-            errorWidget: (_, _, _) =>
-                Container(color: AppColors.background),
+            errorWidget: (_, _, _) => Container(color: AppColors.background),
           ),
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
@@ -179,9 +177,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 300),
                                 child: Icon(
-                                  liked
-                                      ? Icons.favorite
-                                      : Icons.favorite_border,
+                                  liked ? Icons.favorite : Icons.favorite_border,
                                   key: ValueKey(liked),
                                   color: liked
                                       ? AppColors.accent
@@ -199,7 +195,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                         const SizedBox(height: 20),
                         _buildExtraControls(),
                         const SizedBox(height: 12),
-                        // Only show a subtle indicator if connected
                         if (_isConnected)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
@@ -427,21 +422,16 @@ class _SeekBar extends StatelessWidget {
         return StreamBuilder<Duration?>(
           stream: svc.durationStream,
           builder: (ctx2, durSnap) {
-            final duration =
-                durSnap.data ?? const Duration(seconds: 30);
-            final maxMs = duration.inMilliseconds
-                .toDouble()
-                .clamp(1.0, double.infinity);
-            final valMs =
-            position.inMilliseconds.toDouble().clamp(0.0, maxMs);
+            final duration = durSnap.data ?? const Duration(seconds: 30);
+            final maxMs = duration.inMilliseconds.toDouble().clamp(1.0, double.infinity);
+            final valMs = position.inMilliseconds.toDouble().clamp(0.0, maxMs);
             return Column(
               children: [
                 Slider(
                   min: 0,
                   max: maxMs,
                   value: valMs,
-                  onChanged: (v) =>
-                      svc.seek(Duration(milliseconds: v.toInt())),
+                  onChanged: (v) => svc.seek(Duration(milliseconds: v.toInt())),
                 ),
                 Row(
                   children: [
